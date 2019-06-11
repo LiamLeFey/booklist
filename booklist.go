@@ -17,11 +17,15 @@ type Book struct {
 }
 
 func NewBook() Book {
+	d, err := time.Parse("2006-Jan-02", time.Now().Format("2006-Jan-02"))
+	if err != nil { // this should never happen...
+		panic(err)
+	}
 	return Book{
 		Author:      "Unknown",
 		Title:       "Untitled",
 		Publisher:   "Not Published",
-		PublishDate: time.Now(),
+		PublishDate: d,
 		Rating:      2,
 		Status:      CheckedIn}
 }
