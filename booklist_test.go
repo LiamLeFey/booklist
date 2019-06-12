@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"log"
@@ -116,7 +117,7 @@ func TestServerResponse(t *testing.T) {
 // Aaaand since Delete isn't a provided func, we'll be writing some helpers.
 // Sigh.
 // Well, we'll want the headers later when our tests get more involved.
-func TestDeleteBook(t *testing.T) {
+func TestFailDeleteBook(t *testing.T) {
 	// make the request
 	_, _, code := sendDelete("/Book/1", t)
 	if code != 404 {
@@ -124,7 +125,7 @@ func TestDeleteBook(t *testing.T) {
 	}
 }
 
-func sendGet(path string, t *testing.T) (content, contentType string, code int) {
+func sendGet(path string, t *testing.T) (content []byte, contentType string, code int) {
 	resp, err := http.Get(LOCAL_BASE + path)
 	if err != nil {
 		t.Error(err)
@@ -139,15 +140,34 @@ func sendGet(path string, t *testing.T) (content, contentType string, code int) 
 		if ts != nil && len(ts) > 0 {
 			contentType = ts[0]
 		}
-		return string(b), contentType, resp.StatusCode
+		return b, contentType, resp.StatusCode
 	}
-	return "", "", -1
+	return make([]byte, 0), "", -1
 }
-func sendDelete(path string, t *testing.T) (content, contentType string, code int) {
+func sendPost(path string, t *testing.T) (content []byte, contentType string, code int) {
+	resp, err := http.Post(LOCAL_BASE+path, "", nil)
+	if err != nil {
+		t.Error(err)
+	}
+	if resp != nil {
+		defer resp.Body.Close()
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		ts := resp.Header["Response-Type"]
+		if ts != nil && len(ts) > 0 {
+			contentType = ts[0]
+		}
+		return b, contentType, resp.StatusCode
+	}
+	return make([]byte, 0), "", -1
+}
+func sendDelete(path string, t *testing.T) (content []byte, contentType string, code int) {
 	req, err := http.NewRequest(http.MethodDelete, LOCAL_BASE+path, nil)
 	if err != nil {
 		t.Error(err)
-		return "", "", -1
+		return make([]byte, 0), "", -1
 	}
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -163,7 +183,58 @@ func sendDelete(path string, t *testing.T) (content, contentType string, code in
 		if ts != nil && len(ts) > 0 {
 			contentType = ts[0]
 		}
-		return string(b), contentType, resp.StatusCode
+		return b, contentType, resp.StatusCode
 	}
-	return "", "", -1
+	return make([]byte, 0), "", -1
+}
+func TestCreateReadDeleteBook(t *testing.T) {
+	content1, cType1, code1 := sendPost("/Book/1", t)
+	if code1 != 201 {
+		t.Errorf("creating book returned code %d, expected 201", code1)
+	}
+	if cType1 != "application/json" {
+		t.Error("unexpected content type creating book. expected application/json, got", cType1)
+	}
+	var b1 Book
+	err := json.Unmarshal(content1, &b1)
+	if err != nil {
+		t.Error("error while unmarshalling created book. json: ", content1)
+	}
+	content2, cType2, code2 := sendGet("/Book/1", t)
+	if code2 != 200 {
+		t.Errorf("getting book returned code %d, expected 200", code2)
+	}
+	if cType2 != "application/json" {
+		t.Error("unexpected content type creating book. expected application/json, got", cType2)
+	}
+	var b2 Book
+	err = json.Unmarshal(content2, &b2)
+	if err != nil {
+		t.Error("error while unmarshalling created book. json: ", content2)
+	}
+	if bytes.Compare(content1, content2) != 0 {
+		t.Errorf("content creating and reading differ. C1: %v C2: %v", content1, content2)
+	}
+	content3, cType3, code3 := sendDelete("/Book/1", t)
+	if code3 != 200 {
+		t.Errorf("deleting created book returned code %d, expected 200", code3)
+	}
+	if cType3 != "application/json" {
+		t.Error("unexpected content type creating book. expected application/json, got", cType3)
+	}
+	var b3 Book
+	err = json.Unmarshal(content3, &b3)
+	if err != nil {
+		t.Error("error while unmarshalling created book. json: ", content3)
+	}
+	if bytes.Compare(content1, content3) != 0 {
+		t.Errorf("content creating and deleting differ. C1: %v C3: %v", content1, content3)
+	}
+	content4, _, code4 := sendDelete("/Book/1", t)
+	if code4 != 404 {
+		t.Errorf("deleting already deleted book returned code %d, expected 404", code4)
+	}
+	if content4 != nil && len(content4) != 0 {
+		t.Error("got content when deleting already deleted book. content: ", content4)
+	}
 }
