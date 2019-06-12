@@ -111,6 +111,14 @@ func TestServerResponse(t *testing.T) {
 	sendGet("", t)
 }
 
+func TestNotThereGetResponse(t *testing.T) {
+	sendGet("", t)
+	_, _, code := sendDelete("/book/1", t)
+	if code != 404 {
+		t.Errorf("getting non-existent book returned code %d, expected 404", code)
+	}
+}
+
 // Okay, starting the server each time would be tedious and slow, so I'm switching to a TestMain
 // that starts it, and all tests should attempt to clean up after themselves
 // Bleah. I suppose that means testing then writing the delete test first.
