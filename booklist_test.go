@@ -119,7 +119,7 @@ func TestServerResponse(t *testing.T) {
 // Well, we'll want the headers later when our tests get more involved.
 func TestFailDeleteBook(t *testing.T) {
 	// make the request
-	_, _, code := sendDelete("/Book/1", t)
+	_, _, code := sendDelete("/book/1", t)
 	if code != 404 {
 		t.Errorf("deleting non-existant book returned code %d, expected 404", code)
 	}
@@ -136,7 +136,7 @@ func sendGet(path string, t *testing.T) (content []byte, contentType string, cod
 		if err != nil {
 			t.Error(err)
 		}
-		ts := resp.Header["Response-Type"]
+		ts := resp.Header["Content-Type"]
 		if ts != nil && len(ts) > 0 {
 			contentType = ts[0]
 		}
@@ -155,7 +155,7 @@ func sendPost(path string, t *testing.T) (content []byte, contentType string, co
 		if err != nil {
 			t.Error(err)
 		}
-		ts := resp.Header["Response-Type"]
+		ts := resp.Header["Content-Type"]
 		if ts != nil && len(ts) > 0 {
 			contentType = ts[0]
 		}
@@ -179,7 +179,7 @@ func sendDelete(path string, t *testing.T) (content []byte, contentType string, 
 		if err != nil {
 			t.Error(err)
 		}
-		ts := resp.Header["Response-Type"]
+		ts := resp.Header["Content-Type"]
 		if ts != nil && len(ts) > 0 {
 			contentType = ts[0]
 		}
@@ -188,7 +188,7 @@ func sendDelete(path string, t *testing.T) (content []byte, contentType string, 
 	return make([]byte, 0), "", -1
 }
 func TestCreateReadDeleteBook(t *testing.T) {
-	content1, cType1, code1 := sendPost("/Book/1", t)
+	content1, cType1, code1 := sendPost("/book/1", t)
 	if code1 != 201 {
 		t.Errorf("creating book returned code %d, expected 201", code1)
 	}
@@ -198,43 +198,43 @@ func TestCreateReadDeleteBook(t *testing.T) {
 	var b1 Book
 	err := json.Unmarshal(content1, &b1)
 	if err != nil {
-		t.Error("error while unmarshalling created book. json: ", content1)
+		t.Error("error while unmarshalling created book. json: ", string(content1))
 	}
-	content2, cType2, code2 := sendGet("/Book/1", t)
+	content2, cType2, code2 := sendGet("/book/1", t)
 	if code2 != 200 {
 		t.Errorf("getting book returned code %d, expected 200", code2)
 	}
 	if cType2 != "application/json" {
-		t.Error("unexpected content type creating book. expected application/json, got", cType2)
+		t.Error("unexpected content type getting book. expected application/json, got", cType2)
 	}
 	var b2 Book
 	err = json.Unmarshal(content2, &b2)
 	if err != nil {
-		t.Error("error while unmarshalling created book. json: ", content2)
+		t.Error("error while unmarshalling retrieved book. json: ", string(content2))
 	}
 	if bytes.Compare(content1, content2) != 0 {
-		t.Errorf("content creating and reading differ. C1: %v C2: %v", content1, content2)
+		t.Errorf("content creating and reading differ. C1: %v C2: %v", string(content1), string(content2))
 	}
-	content3, cType3, code3 := sendDelete("/Book/1", t)
+	content3, cType3, code3 := sendDelete("/book/1", t)
 	if code3 != 200 {
 		t.Errorf("deleting created book returned code %d, expected 200", code3)
 	}
 	if cType3 != "application/json" {
-		t.Error("unexpected content type creating book. expected application/json, got", cType3)
+		t.Error("unexpected content type deleting book. expected application/json, got", cType3)
 	}
 	var b3 Book
 	err = json.Unmarshal(content3, &b3)
 	if err != nil {
-		t.Error("error while unmarshalling created book. json: ", content3)
+		t.Error("error while unmarshalling deleted book. json: ", string(content3))
 	}
 	if bytes.Compare(content1, content3) != 0 {
-		t.Errorf("content creating and deleting differ. C1: %v C3: %v", content1, content3)
+		t.Errorf("content creating and deleting differ. C1: %v C3: %v", string(content1), string(content3))
 	}
-	content4, _, code4 := sendDelete("/Book/1", t)
+	content4, _, code4 := sendDelete("/book/1", t)
 	if code4 != 404 {
 		t.Errorf("deleting already deleted book returned code %d, expected 404", code4)
 	}
 	if content4 != nil && len(content4) != 0 {
-		t.Error("got content when deleting already deleted book. content: ", content4)
+		t.Error("got content when deleting already deleted book. content: ", string(content4))
 	}
 }

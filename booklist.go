@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -48,11 +47,6 @@ func main() {
 	bookList = make(map[int]Book)
 	listLock = &sync.Mutex{}
 
-	httpHandler := func(w http.ResponseWriter, req *http.Request) {
-		io.WriteString(w, "{}")
-	}
-
-	http.HandleFunc("/", httpHandler)
 	http.HandleFunc("/book/", bookHandler)
 
 	log.Fatal(http.ListenAndServe(":8080", nil))
@@ -61,7 +55,9 @@ func main() {
 func bookHandler(w http.ResponseWriter, req *http.Request) {
 	switch req.Method {
 	case http.MethodGet:
+		getBook(w, req)
 	case http.MethodPost:
+		createBook(w, req)
 	case http.MethodPut:
 	case http.MethodDelete:
 		deleteBook(w, req)
@@ -94,4 +90,44 @@ func deleteBook(w http.ResponseWriter, req *http.Request) {
 	listLock.Unlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(book) // should automagically set status code to 200 OK
+}
+func createBook(w http.ResponseWriter, req *http.Request) {
+	path := req.URL.Path
+	id, err := getIDFromPath(path)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+	listLock.Lock()
+	book, there := bookList[id]
+	if there {
+		listLock.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(409) // conflict
+		json.NewEncoder(w).Encode(book)
+		return
+	}
+	book = NewBook()
+	bookList[id] = book
+	listLock.Unlock()
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201) // created
+	json.NewEncoder(w).Encode(book)
+}
+func getBook(w http.ResponseWriter, req *http.Request) {
+	path := req.URL.Path
+	id, err := getIDFromPath(path)
+	if err != nil {
+		w.WriteHeader(404)
+		return
+	}
+	listLock.Lock()
+	book, there := bookList[id]
+	listLock.Unlock()
+	if !there {
+		w.WriteHeader(404)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(book)
 }
