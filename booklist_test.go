@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"testing"
@@ -187,6 +188,30 @@ func sendDelete(path string, t *testing.T) (content []byte, contentType string, 
 	}
 	return make([]byte, 0), "", -1
 }
+func sendPut(path string, t *testing.T) (content []byte, contentType string, code int) {
+	req, err := http.NewRequest(http.MethodPut, LOCAL_BASE+path, nil)
+	if err != nil {
+		t.Error(err)
+		return make([]byte, 0), "", -1
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Error(err)
+	}
+	if resp != nil {
+		defer resp.Body.Close()
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		ts := resp.Header["Content-Type"]
+		if ts != nil && len(ts) > 0 {
+			contentType = ts[0]
+		}
+		return b, contentType, resp.StatusCode
+	}
+	return make([]byte, 0), "", -1
+}
 func TestCreateReadDeleteBook(t *testing.T) {
 	content1, cType1, code1 := sendPost("/book/1", t)
 	if code1 != 201 {
@@ -236,5 +261,112 @@ func TestCreateReadDeleteBook(t *testing.T) {
 	}
 	if content4 != nil && len(content4) != 0 {
 		t.Error("got content when deleting already deleted book. content: ", string(content4))
+	}
+}
+func TestCreateUpdateGetDeleteBook(t *testing.T) {
+	sendPost("/book/1", t)
+
+	onesDate, err := time.Parse("2006-Jan-02", "2011-Jan-11")
+	// Valid update
+	query2 := "Title=" + url.QueryEscape("Napkin Manifesto") + "&Author=" + url.QueryEscape("Pickles Rondeau") +
+		"&Rating=1&Status=CheckedOut&PublishDate=" + url.QueryEscape(onesDate.Format("2006-Jan-02"))
+	content2, cType2, code2 := sendPut("/book/1?"+query2, t)
+	if code2 != 200 {
+		t.Errorf("updating book returned code %d, expected 200", code2)
+	}
+	if cType2 != "application/json" {
+		t.Error("unexpected content type getting book. expected application/json, got", cType2)
+	}
+	var b2 Book
+	err = json.Unmarshal(content2, &b2)
+	if err != nil {
+		t.Error("error while unmarshalling retrieved book. json: ", string(content2))
+	}
+	if b2.Title != "Napkin Manifesto" {
+		t.Errorf("Title not set correctly on update. Got %v, expected Napkin Manifesto", b2.Title)
+	}
+	if b2.Author != "Pickles Rondeau" {
+		t.Errorf("Author not set correctly on update. Got %v, expected Pickles Rondeau", b2.Author)
+	}
+	if b2.Publisher != "Not Published" {
+		t.Errorf("Publisher not correct on update. Got %v, expected Not Published", b2.Publisher)
+	}
+	if b2.PublishDate != onesDate {
+		t.Errorf("Date not set correctly on update. Got %v, expected %v", b2.PublishDate, onesDate)
+	}
+	if b2.Rating != 1 {
+		t.Errorf("Rating not set correctly on update. Got %v, expected 1", b2.Rating)
+	}
+	if b2.Status != CheckedOut {
+		t.Errorf("Status not set correctly on update. Got %v, expected CheckedOut", b2.Status)
+	}
+
+	// Invalid updates
+	// Rating out of range
+	query3 := "Rating=5"
+	_, _, code3 := sendPut("/book/1?"+query3, t)
+	if code3 != 400 {
+		t.Errorf("updating book with rating out of range returned code %d, expected 400", code3)
+	}
+
+	// Re-checkout
+	query4 := "Status=CheckedOut"
+	_, _, code4 := sendPut("/book/1?"+query4, t)
+
+	if code4 != 409 {
+		t.Errorf("checking out an already checked out book returned code %d, expected 409", code4)
+	}
+
+	// Bad key
+	query5 := "Author=" + url.QueryEscape("Pie Rondeau") + "&Herbal=" + url.QueryEscape("No Thanks")
+	_, _, code5 := sendPut("/book/1?"+query5, t)
+	if code3 != 400 {
+		t.Errorf("updating book with bad query key returned code %d, expected 400", code5)
+	}
+
+	query6 := "PublishDate=" + url.QueryEscape("Sometime yesterday afternoon")
+	_, _, code6 := sendPut("/book/1?"+query6, t)
+	if code6 != 400 {
+		t.Errorf("updating book with bad date format returned code %d, expected 400", code6)
+	}
+
+	// also check failure case of creating book already there
+	_, _, code7 := sendPost("/book/1", t)
+	if code7 != 409 {
+		t.Errorf("duplicate creating book returned code %d, expected 409", code7)
+	}
+
+	// make sure none of the invalid updates changed anything
+	content8, _, _ := sendGet("/book/1", t)
+	var b8 Book
+	err = json.Unmarshal(content8, &b8)
+	if err != nil {
+		t.Error("error while unmarshalling retrieved book. json: ", string(content8))
+	}
+	if b8.Title != "Napkin Manifesto" {
+		t.Errorf("Title not set correctly on update. Got %v, expected Napkin Manifesto", b8.Title)
+	}
+	// this is the main one. The author was changed in a query along with a bad key, so
+	// the author change should NOT take effect. (An error code was returned.)
+	if b8.Author != "Pickles Rondeau" {
+		t.Errorf("Author not set correctly on update. Got %v, expected Pickles Rondeau", b8.Author)
+	}
+	if b8.Publisher != "Not Published" {
+		t.Errorf("Publisher not correct on update. Got %v, expected Not Published", b8.Publisher)
+	}
+	// the other main one, since date was mangled
+	if b8.PublishDate != onesDate {
+		t.Errorf("Date not set correctly on update. Got %v, expected %v", b8.PublishDate, onesDate)
+	}
+	if b8.Rating != 1 {
+		t.Errorf("Rating not set correctly on update. Got %v, expected 1", b8.Rating)
+	}
+	if b8.Status != CheckedOut {
+		t.Errorf("Status not set correctly on update. Got %v, expected CheckedOut", b8.Status)
+	}
+
+	_, _, code9 := sendDelete("/book/1", t)
+	if code9 != 200 {
+		t.Errorf("deleting book returned code %d, expected 200", code9)
 	}
 }
