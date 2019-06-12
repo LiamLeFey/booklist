@@ -3,11 +3,30 @@ package main
 import (
 	"encoding/json"
 	"io/ioutil"
+	"log"
 	"net/http"
+	"os"
 	"os/exec"
 	"testing"
 	"time"
 )
+
+const LOCAL_BASE = "http://localhost:8080/Book/1"
+
+func TestMain(m *testing.M) {
+	cmd := exec.Command("booklist")
+	if err := cmd.Start(); err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		if err := cmd.Process.Kill(); err != nil {
+			log.Fatal("failed to kill process: ", err)
+		}
+	}()
+	// wait 1 sec for it to start
+	time.Sleep(time.Second)
+	os.Exit(m.Run())
+}
 
 func TestBookStructExists(t *testing.T) {
 	b := Book{}
@@ -87,27 +106,65 @@ func TestJsonTransfer(t *testing.T) {
 	}
 }
 func TestServerResponse(t *testing.T) {
-	cmd := exec.Command("booklist")
-	if err := cmd.Start(); err != nil {
-		t.Error(err)
-	}
-	defer func() {
-		if err := cmd.Process.Kill(); err != nil {
-			t.Error("failed to kill process: ", err)
-		}
-	}()
-	// wait 1 sec for it to start
-	time.Sleep(time.Second)
 	// make the request
-	resp, err := http.Get("http://localhost:8080/")
+	sendGet("", t)
+}
+
+// Okay, starting the server each time would be tedious and slow, so I'm switching to a TestMain
+// that starts it, and all tests should attempt to clean up after themselves
+// Bleah. I suppose that means testing then writing the delete test first.
+//
+// Aaaand since Delete isn't a provided func, we'll be writing some helpers.
+// Sigh.
+// Well, we'll want the headers later when our tests get more involved.
+func TestDeleteBook(t *testing.T) {
+	// make the request
+	_, _, code := sendDelete("/Book/1", t)
+	if code != 404 {
+		t.Errorf("deleting non-existant book returned %d, expected 404", code)
+	}
+}
+
+func sendGet(path string, t *testing.T) (content, contentType string, code int) {
+	resp, err := http.Get(LOCAL_BASE + path)
 	if err != nil {
 		t.Error(err)
 	}
 	if resp != nil {
 		defer resp.Body.Close()
-		_, err = ioutil.ReadAll(resp.Body)
+		b, err := ioutil.ReadAll(resp.Body)
 		if err != nil {
 			t.Error(err)
 		}
+		ts := resp.Header["Response-Type"]
+		if ts != nil && len(ts) > 0 {
+			contentType = ts[0]
+		}
+		return string(b), contentType, resp.StatusCode
 	}
+	return "", "", -1
+}
+func sendDelete(path string, t *testing.T) (content, contentType string, code int) {
+	req, err := http.NewRequest(http.MethodDelete, LOCAL_BASE+path, nil)
+	if err != nil {
+		t.Error(err)
+		return "", "", -1
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Error(err)
+	}
+	if resp != nil {
+		defer resp.Body.Close()
+		b, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Error(err)
+		}
+		ts := resp.Header["Response-Type"]
+		if ts != nil && len(ts) > 0 {
+			contentType = ts[0]
+		}
+		return string(b), contentType, resp.StatusCode
+	}
+	return "", "", -1
 }
