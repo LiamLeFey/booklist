@@ -2,6 +2,9 @@ package main
 
 import (
 	"encoding/json"
+	"io/ioutil"
+	"net/http"
+	"os/exec"
 	"testing"
 	"time"
 )
@@ -65,21 +68,46 @@ func TestJsonTransfer(t *testing.T) {
 		t.Errorf("Error unmarshalling book %v", err)
 	}
 	if b1.Title != b2.Title {
-		t.Error("Title mismatch b1:", b1.Title, "b2:", b2.Title )
+		t.Error("Title mismatch b1:", b1.Title, "b2:", b2.Title)
 	}
 	if b1.Author != b2.Author {
-		t.Error("Author mismatch b1:", b1.Author, "b2:", b2.Author )
+		t.Error("Author mismatch b1:", b1.Author, "b2:", b2.Author)
 	}
 	if b1.Publisher != b2.Publisher {
-		t.Error("Publisher mismatch b1:", b1.Publisher, "b2:", b2.Publisher )
+		t.Error("Publisher mismatch b1:", b1.Publisher, "b2:", b2.Publisher)
 	}
 	if b1.PublishDate != b2.PublishDate {
-		t.Error("PublishDate mismatch b1:", b1.PublishDate, "b2:", b2.PublishDate )
+		t.Error("PublishDate mismatch b1:", b1.PublishDate, "b2:", b2.PublishDate)
 	}
 	if b1.Rating != b2.Rating {
-		t.Error("Rating mismatch b1:", b1.Rating, "b2:", b2.Rating )
+		t.Error("Rating mismatch b1:", b1.Rating, "b2:", b2.Rating)
 	}
 	if b1.Status != b2.Status {
-		t.Error("Status mismatch b1:", b1.Status, "b2:", b2.Status )
+		t.Error("Status mismatch b1:", b1.Status, "b2:", b2.Status)
+	}
+}
+func TestServerResponse(t *testing.T) {
+	cmd := exec.Command("booklist")
+	if err := cmd.Start(); err != nil {
+		t.Error(err)
+	}
+	defer func() {
+		if err := cmd.Process.Kill(); err != nil {
+			t.Error("failed to kill process: ", err)
+		}
+	}()
+	// wait 1 sec for it to start
+	time.Sleep(time.Second)
+	// make the request
+	resp, err := http.Get("http://localhost:8080/")
+	if err != nil {
+		t.Error(err)
+	}
+	if resp != nil {
+		defer resp.Body.Close()
+		_, err = ioutil.ReadAll(resp.Body)
+		if err != nil {
+			t.Error(err)
+		}
 	}
 }
