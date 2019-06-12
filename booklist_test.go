@@ -11,21 +11,20 @@ import (
 	"time"
 )
 
-const LOCAL_BASE = "http://localhost:8080/Book/1"
+const LOCAL_BASE = "http://localhost:8080"
 
 func TestMain(m *testing.M) {
 	cmd := exec.Command("booklist")
 	if err := cmd.Start(); err != nil {
 		log.Fatal(err)
 	}
-	defer func() {
-		if err := cmd.Process.Kill(); err != nil {
-			log.Fatal("failed to kill process: ", err)
-		}
-	}()
 	// wait 1 sec for it to start
 	time.Sleep(time.Second)
-	os.Exit(m.Run())
+	exitCode := m.Run()
+	if err := cmd.Process.Kill(); err != nil {
+		log.Fatal("failed to kill process: ", err)
+	}
+	os.Exit(exitCode)
 }
 
 func TestBookStructExists(t *testing.T) {
@@ -121,7 +120,7 @@ func TestDeleteBook(t *testing.T) {
 	// make the request
 	_, _, code := sendDelete("/Book/1", t)
 	if code != 404 {
-		t.Errorf("deleting non-existant book returned %d, expected 404", code)
+		t.Errorf("deleting non-existant book returned code %d, expected 404", code)
 	}
 }
 
