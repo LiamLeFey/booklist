@@ -16,15 +16,24 @@ import (
 const LOCAL_BASE = "http://localhost:8080"
 
 func TestMain(m *testing.M) {
-	cmd := exec.Command("booklist")
-	if err := cmd.Start(); err != nil {
+	cmd := exec.Command("go", "build", "-o", "./booklist", "booklist.go")
+	if err := cmd.Run(); err != nil {
+		log.Fatal(err)
+	}
+	cmd = exec.Command("docker", "build", "--tag=booklistimage", ".")
+	if err := cmd.Run(); err != nil {
+		log.Fatal(err)
+	}
+	cmd = exec.Command("docker", "run", "-d", "--name", "booklistcontainer", "-p", "8080:8080", "booklistimage")
+	if err := cmd.Run(); err != nil {
 		log.Fatal(err)
 	}
 	// wait 1 sec for it to start
 	time.Sleep(time.Second)
 	exitCode := m.Run()
-	if err := cmd.Process.Kill(); err != nil {
-		log.Fatal("failed to kill process: ", err)
+	cmd = exec.Command("docker", "stop", "booklistcontainer")
+	if err := cmd.Run(); err != nil {
+		log.Fatal(err)
 	}
 	os.Exit(exitCode)
 }
