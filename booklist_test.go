@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -31,7 +33,17 @@ func TestMain(m *testing.M) {
 	// wait 1 sec for it to start
 	time.Sleep(time.Second)
 	exitCode := m.Run()
+
+	// clean up
 	cmd = exec.Command("docker", "stop", "booklistcontainer")
+	if err := cmd.Run(); err != nil {
+		log.Fatal(err)
+	}
+	cmd = exec.Command("docker", "rm", "booklistcontainer")
+	if err := cmd.Run(); err != nil {
+		log.Fatal(err)
+	}
+	cmd = exec.Command("docker", "rmi", "booklistimage")
 	if err := cmd.Run(); err != nil {
 		log.Fatal(err)
 	}
@@ -386,4 +398,69 @@ func TestCreateUpdateGetDeleteBook(t *testing.T) {
 	if code9 != 200 {
 		t.Errorf("deleting book returned code %d, expected 200", code9)
 	}
+}
+
+// could not get the channels to read. dunno what I was doing wrong
+
+func TestBoxOfHammers1(t *testing.T) {
+	threadCount := 100
+	createCount := make(chan int, threadCount)
+	deleteCount := make(chan int, threadCount)
+	for i := 0; i < threadCount; i++ {
+		go hammer1(t, createCount, deleteCount)
+		// Turns out you can't use t.Run and t.Parallel if you need
+		// to communicate through channels.
+		// uncommenting this (and the t.Parallel in hammer1) will 
+		// cause a deadlock when this thread tries to read from the
+		// channels
+		//t.Run( "Hammer1." + strconv.Itoa(i), func(t *testing.T) {
+			//hammer1(t, createCount, deleteCount)
+		//})
+	}
+	creations := 0
+	deletions := 0
+	for i := 0; i < threadCount; i++ {
+		creations += <-createCount
+	}
+	for i := 0; i < threadCount; i++ {
+		deletions += <-deleteCount
+	}
+	if creations < deletions || creations > deletions+5 {
+		t.Errorf("Erroneous counts creations %d, deletions %d", creations, deletions)
+	}
+}
+// runs random commands, counting the successful creations and deletions
+// only 5 ids are used, increasing the chance of collisions. There cannot
+// be more deletions than creations, and no more than creations+5 deletions
+func hammer1(t *testing.T, createCount, deleteCount chan int) {
+	//t.Parallel()
+	paths := [5]string{"/book/1", "/book/2", "/book/3", "/book/4", "/book/5"}
+	titles := [5]string{"TitleA", "TitleB", "TitleC", "TitleD", "TitleE"}
+	authors := [5]string{"AuthorA", "AuthorB", "AuthorC", "AuthorD", "AuthorE"}
+	ratings := [5]int{0, 1, 2, 3, 4}
+	creations := 0
+	deletions := 0
+	for i := 0; i < 100; i++ {
+		switch rand.Int() % 4 {
+		case 0: // create
+			_, _, code := sendPost(paths[rand.Int()%5], t)
+			if code == 201 {
+				creations += 1
+			}
+		case 1: // read
+			sendGet(paths[rand.Int()%5], t)
+		case 2: // update
+			query := "?Title=" + titles[rand.Int()%5] +
+				"&Author=" + authors[rand.Int()%5] +
+				"&Rating=" + strconv.Itoa(ratings[rand.Int()%5])
+			sendPut(paths[rand.Int()%5] + query, t)
+		case 3: // delete
+			_, _, code := sendDelete(paths[rand.Int()%5], t)
+			if code == 200 {
+				deletions += 1
+			}
+		}
+	}
+	createCount <- creations
+	deleteCount <- deletions
 }
