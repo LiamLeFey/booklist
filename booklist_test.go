@@ -428,6 +428,9 @@ func TestBoxOfHammers1(t *testing.T) {
 	if creations < deletions || creations > deletions+5 {
 		t.Errorf("Erroneous counts creations %d, deletions %d", creations, deletions)
 	}
+	for i := 1; i < 6; i++ {
+		sendDelete("/book/" + strconv.Itoa(i), t)
+	}
 }
 // runs random commands, counting the successful creations and deletions
 // only 5 ids are used, increasing the chance of collisions. There cannot
@@ -463,4 +466,50 @@ func hammer1(t *testing.T, createCount, deleteCount chan int) {
 	}
 	createCount <- creations
 	deleteCount <- deletions
+}
+func TestBoxOfHammers2(t *testing.T) {
+	threadCount := 100
+	inch := make(chan int, threadCount)
+	outch := make(chan int, threadCount)
+	for i := 0; i < threadCount; i++ {
+		go hammer2(t, inch, outch)
+	}
+	ins := 0
+	outs := 0
+	sendPost("/book/1", t)
+	for i := 0; i < threadCount; i++ {
+		ins += <-inch
+		outs += <-outch
+	}
+	c, _, _ := sendGet("/book/1", t)
+	var b Book
+	json.Unmarshal(c, &b)
+	if b.Status == CheckedOut && ins != outs-1 {
+		t.Errorf("Erroneous counts checkins %d, checkouts %d", ins, outs)
+	} else if ins != outs {
+		t.Errorf("Erroneous counts checkins %d, checkouts %d", ins, outs)
+	}
+	sendDelete("/book/1", t)
+
+}
+// randomly checks book/1 in and out
+func hammer2(t *testing.T, inch, outch chan int) {
+	ins := 0
+	outs := 0
+	for i := 0; i < 100; i++ {
+		switch rand.Int() % 2 {
+		case 0: // checkin
+			_, _, code := sendPut("/book/1?Status=CheckedIn", t)
+			if code == 200 {
+				ins += 1
+			}
+		case 1: // checkout
+			_, _, code := sendPut("/book/1?Status=CheckedOut", t)
+			if code == 200 {
+				outs += 1
+			}
+		}
+	}
+	inch <- ins
+	outch <- outs
 }
